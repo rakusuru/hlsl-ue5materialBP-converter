@@ -8,6 +8,7 @@ const EXPRESSION_CLASS_MAP = {
   Time: "MaterialExpressionTime",
   Constant: "MaterialExpressionConstant",
   Constant3Vector: "MaterialExpressionConstant3Vector",
+  SceneTexture: "MaterialExpressionSceneTexture",
 };
 
 const PB = 'PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False';
@@ -43,7 +44,9 @@ export function generateBlueprintPaste(hlslCode, inputs, outputs, returnType, ma
   r += `   Begin Object Name="${ce}" ExportPath="/Script/Engine.MaterialExpressionCustom'${gp}.${cn}.${ce}'"\n      Code="${escCode}"\n`;
   if (returnType !== "CMOT_Float3") r += `      OutputType=${returnType}\n`;
   inputs.forEach((inp, i) => { const n = nd[i], nm = `MaterialGraphNode_${n.idx}`; let l = `      Inputs(${i})=(InputName="${inp.name}",Input=(Expression="/Script/Engine.${n.ec}'${nm}.${n.en}'"`;
-    if (inp.nodeType === "VectorParameter" && (inp.inferredType === "float3" || !inp.inferredType.includes("4"))) l += `,Mask=1,MaskR=1,MaskG=1,MaskB=1`; r += l + `))\n`; });
+    if (inp.nodeType === "VectorParameter" && (inp.inferredType === "float3" || !inp.inferredType.includes("4"))) l += `,Mask=1,MaskR=1,MaskG=1,MaskB=1`;
+    if (inp.nodeType === "SceneTexture") l += `,Mask=1,MaskR=1,MaskG=1,MaskB=1,MaskA=1`;
+    r += l + `))\n`; });
   outputs.forEach((out, i) => { r += `      AdditionalOutputs(${i})=(OutputName="${out.name}")\n`; });
   r += `      ShowCode=True\n      MaterialExpressionEditorX=${cx}\n      MaterialExpressionEditorY=${cy}\n      MaterialExpressionGuid=${ceg}\n      Material="/Script/UnrealEd.PreviewMaterial'${mp}'"\n`;
   if (outputs.length > 0) r += `      bShowOutputNameOnPin=True\n`;
@@ -66,15 +69,33 @@ export function generateBlueprintPaste(hlslCode, inputs, outputs, returnType, ma
       case "TextureObjectParameter": r += `      ParameterName="${inp.name}"\n      ExpressionGUID=${pg}\n`; break;
       case "Constant": r += `      R=${parseFloat(inp.defaultValue||"0.0").toFixed(6)}\n`; break;
       case "Constant3Vector": r += `      Constant=${inp.defaultValue||"(R=0.0,G=0.0,B=0.0)"}\n`; break;
+      case "SceneTexture": r += `      SceneTextureId=${inp.defaultValue||"PPI_PostProcessInput0"}\n`; break;
     }
     r += `      MaterialExpressionEditorX=${px}\n      MaterialExpressionEditorY=${ppy}\n      MaterialExpressionGuid=${eg}\n      Material="/Script/UnrealEd.PreviewMaterial'${mp}'"\n   End Object\n`;
     r += `   MaterialExpression="/Script/Engine.${ec}'${en}'"\n   NodePosX=${px}\n   NodePosY=${ppy}\n`;
     if (["ScalarParameter","VectorParameter","TextureObjectParameter"].includes(inp.nodeType)) r += `   bCanRenameNode=True\n`;
+    if (inp.nodeType === "SceneTexture") r += `   AdvancedPinDisplay=Hidden\n`;
     r += `   NodeGuid=${ng}\n`;
     if (inp.nodeType === "ScalarParameter") r += pin(generateGUID(), "Default Value", { category: "optional", subCategory: "red", defaultValue: inp.defaultValue||"0.0", notConnectable: true });
     else if (inp.nodeType === "VectorParameter") r += pin(generateGUID(), "Default Value", { category: "optional", subCategory: "rgba", defaultValue: inp.defaultValue||"(R=0.000000,G=0.000000,B=0.000000,A=1.000000)", notConnectable: true });
     else if (inp.nodeType === "Constant") r += pin(generateGUID(), "Value", { category: "optional", subCategory: "red", defaultValue: inp.defaultValue||"0.0", notConnectable: true });
-    r += pin(op, "Output", { output: true, friendlyName: true, category: inp.nodeType === "VectorParameter" ? "mask" : "", linkedTo: `${cn} ${lp}` });
+    else if (inp.nodeType === "SceneTexture") {
+      // SceneTexture input pins
+      r += pin(generateGUID(), "UVs", { category: "optional" });
+      // Scene Texture Id enum pin
+      const stIdName = (inp.defaultValue || "PPI_PostProcessInput0").replace("PPI_", "");
+      r += `   CustomProperties Pin (PinId=${generateGUID()},PinName="Scene Texture Id",PinType.PinCategory="optional",PinType.PinSubCategory="byte",PinType.PinSubCategoryObject="/Script/CoreUObject.Enum'/Script/Engine.ESceneTextureId'",PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultValue="${stIdName}",PersistentGuid=00000000000000000000000000000000,bHidden=False,bNotConnectable=True,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=True,bOrphanedPin=False,)\n`;
+      r += pin(generateGUID(), "Filtered", { category: "optional", subCategory: "bool", defaultValue: "false", notConnectable: true });
+    }
+
+    // Output pin — SceneTexture uses "Color" (mask/rgba), others use "Output"
+    if (inp.nodeType === "SceneTexture") {
+      r += pin(op, "Color", { output: true, category: "mask", subCategory: "rgba", linkedTo: `${cn} ${lp}` });
+      r += pin(generateGUID(), "Size", { output: true });
+      r += pin(generateGUID(), "InvSize", { output: true });
+    } else {
+      r += pin(op, "Output", { output: true, friendlyName: true, category: inp.nodeType === "VectorParameter" ? "mask" : "", linkedTo: `${cn} ${lp}` });
+    }
     if (inp.nodeType === "VectorParameter") { for (const [s, sub] of [["Output2","red"],["Output3","green"],["Output4","blue"],["Output5","alpha"]]) r += pin(generateGUID(), s, { output: true, friendlyName: true, category: "mask", subCategory: sub }); }
     r += `End Object\n`;
   }

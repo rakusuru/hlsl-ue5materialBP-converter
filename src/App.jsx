@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { NODE_TYPES, OUTPUT_TYPES, getTypeColor, highlightHLSL } from './constants';
 import { parseHLSL } from './parser';
 import { generateBlueprintPaste } from './generator';
+import { REDUCIBLE_INPUTS } from './reductions';
 
 // ============================================================
 // Syntax-highlighted code editor (overlay approach)
@@ -126,6 +127,14 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [resultCollapsed, setResultCollapsed] = useState(true);
   const [toast, setToast] = useState({ message: '', visible: false });
+  const [reductionsOpen, setReductionsOpen] = useState(false);
+
+  // Compute reducible inputs
+  const reductions = useMemo(() => {
+    return inputs
+      .filter(inp => inp.name in REDUCIBLE_INPUTS)
+      .map(inp => ({ input: inp, suggestion: REDUCIBLE_INPUTS[inp.name] }));
+  }, [inputs]);
 
   const showToast = (msg) => {
     setToast({ message: msg, visible: true });
@@ -221,7 +230,7 @@ export default function App() {
         />
         <div className="acts">
           <button className="btn bp" onClick={handleParse}>▶ 解析</button>
-          <button className="btn ba" onClick={handleOneClick} disabled={!hlslCode.trim()}>⚡ 一括変換</button>
+          <button className="btn ba" onClick={handleOneClick} disabled={!hlslCode.trim()}>► 解析→生成→コピー</button>
           {parsed && <span className="hint">{inputs.length} inputs · {outputs.length} outputs</span>}
         </div>
       </div>
@@ -295,7 +304,7 @@ export default function App() {
           {/* Generate Actions */}
           <div className="card card-generate">
             <div className="acts" style={{ marginTop: 0 }}>
-              <button className="btn ba" onClick={handleGenerateAndCopy}>⚡ 生成してコピー</button>
+              <button className="btn ba" onClick={handleGenerateAndCopy}>► 生成してコピー</button>
               {generated && (
                 <>
                   <button className="btn bp btn-sm" onClick={() => setModalOpen(true)}>🔍 結果を表示</button>
@@ -305,6 +314,39 @@ export default function App() {
                 </>
               )}
             </div>
+
+            {/* Reductions Suggestion */}
+            {reductions.length > 0 && (
+              <div className="reduction-inline">
+                <button className="reduction-toggle" onClick={() => setReductionsOpen(o => !o)}>
+                  <span className="reduction-icon">💡</span>
+                  <span>入力を削減可能です（{reductions.length}件）</span>
+                  <span className="reduction-arrow">{reductionsOpen ? '▲' : '▼'}</span>
+                </button>
+                {reductionsOpen && (
+                  <div className="reduction-body">
+                    <p className="reduction-desc">
+                      以下の入力ピンは、カスタムノード内のコードで直接取得可能です。
+                      外部ノードの接続を省略してコードを書き換えることで、ノードグラフをシンプルにできます。
+                    </p>
+                    {reductions.map((r, i) => (
+                      <div key={i} className="reduction-item">
+                        <div className="reduction-header">
+                          <span className="reduction-name">{r.suggestion.label}</span>
+                          <span className="reduction-note">{r.suggestion.description}</span>
+                        </div>
+                        {r.suggestion.alternatives.map((alt, j) => (
+                          <div key={j} className="reduction-alt">
+                            <span className="reduction-alt-label">{alt.label}</span>
+                            <pre className="reduction-code">{alt.code}</pre>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Collapsible result */}
             {generated && !resultCollapsed && (

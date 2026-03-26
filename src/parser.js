@@ -1,4 +1,4 @@
-import { HLSL_KEYWORDS, HLSL_TYPES, HLSL_BUILTINS, UE_BUILTINS } from './constants';
+import { HLSL_KEYWORDS, HLSL_TYPES, HLSL_BUILTINS, UE_BUILTINS, UE_AUTO_INPUTS, SCENE_TEXTURE_ID_MAP } from './constants';
 
 export function parseHLSL(code) {
   let cleaned = code.replace(/\/\/.*$/gm, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
@@ -11,6 +11,14 @@ export function parseHLSL(code) {
   const texSamplePattern = /(\w+)\.Sample\s*\(\s*(\w+)/g;
   const textureVars = new Set(), samplerVars = new Set();
   while ((match = texSamplePattern.exec(cleaned)) !== null) { textureVars.add(match[1]); samplerVars.add(match[2]); }
+
+  // Detect SceneTextureLookup usage → need a SceneTexture dummy input
+  let sceneTextureId = null;
+  const stlMatch = cleaned.match(/SceneTextureLookup\s*\(\s*\w+\s*,\s*(\d+)/);
+  if (stlMatch) {
+    const idx = parseInt(stlMatch[1], 10);
+    sceneTextureId = SCENE_TEXTURE_ID_MAP[idx] || "PPI_PostProcessInput0";
+  }
 
   const assignedUndeclared = new Set();
   for (const line of cleaned.split(/\n/)) {
@@ -54,6 +62,14 @@ export function parseHLSL(code) {
 
   for (const name of allIdents) {
     if (skipSet.has(name) || /^\d/.test(name) || (name.length <= 1 && /^[a-z]$/.test(name))) continue;
+
+    // UE built-in variables → auto-add as input pin with predefined type
+    if (name in UE_AUTO_INPUTS && readVars.has(name)) {
+      const info = UE_AUTO_INPUTS[name];
+      inputs.push({ name, ...info });
+      continue;
+    }
+
     const isTexture = textureVars.has(name), isAssigned = assignedUndeclared.has(name), isRead = readVars.has(name);
     if (isTexture) { inputs.push({ name, inferredType: "Texture2D", nodeType: "TextureObjectParameter", defaultValue: "" }); continue; }
     if (isAssigned && !isRead) { outputs.push({ name }); continue; }
@@ -84,7 +100,13 @@ export function parseHLSL(code) {
   const retCon = cleaned.match(/return\s+(float[1234]?)\s*\(/);
   if (retCon) { const t = retCon[1]; if (t === "float" || t === "float1") returnType = "CMOT_Float1"; else if (t === "float2") returnType = "CMOT_Float2"; else if (t === "float3") returnType = "CMOT_Float3"; else if (t === "float4") returnType = "CMOT_Float4"; }
 
-  const typeOrder = { TextureCoordinate: 0, Time: 1, VectorParameter: 2, ScalarParameter: 3, TextureObjectParameter: 4, Constant: 5, Constant3Vector: 5 };
+  const typeOrder = { TextureCoordinate: 0, Time: 1, VectorParameter: 2, ScalarParameter: 3, TextureObjectParameter: 4, SceneTexture: 5, Constant: 6, Constant3Vector: 6 };
   inputs.sort((a, b) => (typeOrder[a.nodeType] ?? 99) - (typeOrder[b.nodeType] ?? 99));
+
+  // Add SceneTexture dummy input if SceneTextureLookup is used
+  if (sceneTextureId) {
+    inputs.push({ name: "SceneTexture", inferredType: "SceneTexture", nodeType: "SceneTexture", defaultValue: sceneTextureId });
+  }
+
   return { inputs, outputs, returnType };
 }
