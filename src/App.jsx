@@ -231,8 +231,42 @@ export default function App() {
         <div className="acts">
           <button className="btn bp" onClick={handleParse}>▶ 解析</button>
           <button className="btn ba" onClick={handleOneClick} disabled={!hlslCode.trim()}>► 解析→生成→コピー</button>
+          {generated && <button className="btn bp btn-sm" onClick={() => setModalOpen(true)}>🔍 結果を表示</button>}
           {parsed && <span className="hint">{inputs.length} inputs · {outputs.length} outputs</span>}
         </div>
+
+        {/* Reductions Suggestion - near the convert buttons */}
+        {parsed && reductions.length > 0 && (
+          <div className="reduction-inline">
+            <button className="reduction-toggle" onClick={() => setReductionsOpen(o => !o)}>
+              <span className="reduction-icon">💡</span>
+              <span>入力を削減可能です（{reductions.length}件）</span>
+              <span className="reduction-arrow">{reductionsOpen ? '▲' : '▼'}</span>
+            </button>
+            {reductionsOpen && (
+              <div className="reduction-body">
+                <p className="reduction-desc">
+                  以下の入力ピンは、カスタムノード内のコードで直接取得可能です。
+                  外部ノードの接続を省略してコードを書き換えることで、ノードグラフをシンプルにできます。
+                </p>
+                {reductions.map((r, i) => (
+                  <div key={i} className="reduction-item">
+                    <div className="reduction-header">
+                      <span className="reduction-name">{r.suggestion.label}</span>
+                      <span className="reduction-note">{r.suggestion.description}</span>
+                    </div>
+                    {r.suggestion.alternatives.map((alt, j) => (
+                      <div key={j} className="reduction-alt">
+                        <span className="reduction-alt-label">{alt.label}</span>
+                        <pre className="reduction-code">{alt.code}</pre>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Parsed Results */}
@@ -307,46 +341,13 @@ export default function App() {
               <button className="btn ba" onClick={handleGenerateAndCopy}>► 生成してコピー</button>
               {generated && (
                 <>
-                  <button className="btn bp btn-sm" onClick={() => setModalOpen(true)}>🔍 結果を表示</button>
+                  <button className="btn bp btn-sm" onClick={() => setModalOpen(true)}>🔍 モーダルで表示</button>
                   <button className="btn bg btn-sm" onClick={() => setResultCollapsed(c => !c)}>
-                    {resultCollapsed ? '▼ 展開' : '▲ 折りたたむ'}
+                    {resultCollapsed ? '▼ ここに展開' : '▲ 折りたたむ'}
                   </button>
                 </>
               )}
             </div>
-
-            {/* Reductions Suggestion */}
-            {reductions.length > 0 && (
-              <div className="reduction-inline">
-                <button className="reduction-toggle" onClick={() => setReductionsOpen(o => !o)}>
-                  <span className="reduction-icon">💡</span>
-                  <span>入力を削減可能です（{reductions.length}件）</span>
-                  <span className="reduction-arrow">{reductionsOpen ? '▲' : '▼'}</span>
-                </button>
-                {reductionsOpen && (
-                  <div className="reduction-body">
-                    <p className="reduction-desc">
-                      以下の入力ピンは、カスタムノード内のコードで直接取得可能です。
-                      外部ノードの接続を省略してコードを書き換えることで、ノードグラフをシンプルにできます。
-                    </p>
-                    {reductions.map((r, i) => (
-                      <div key={i} className="reduction-item">
-                        <div className="reduction-header">
-                          <span className="reduction-name">{r.suggestion.label}</span>
-                          <span className="reduction-note">{r.suggestion.description}</span>
-                        </div>
-                        {r.suggestion.alternatives.map((alt, j) => (
-                          <div key={j} className="reduction-alt">
-                            <span className="reduction-alt-label">{alt.label}</span>
-                            <pre className="reduction-code">{alt.code}</pre>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Collapsible result */}
             {generated && !resultCollapsed && (
